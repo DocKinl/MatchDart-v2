@@ -1,0 +1,21 @@
+{
+  "name": "MatchDart Tracker",
+  "short_name": "MatchDart",
+  "description": "Darts Training & Match Tracker",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#0d1120",
+  "theme_color": "#0d1120",
+  "icons": [
+    {
+      "src": "apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    },
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    }
+  ]
+}
