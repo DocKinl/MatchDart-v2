@@ -275,91 +275,32 @@ function endRoundSum(busted, actualScore, dartCount, won = false, skipSpeak = fa
 // ════════════════════════════════════════════
 //  SPEECH INPUT ENGINE
 // ════════════════════════════════════════════
-let speechRecognition = null;
-let micActive = false;
+let _x01Speech = null; // created by createSpeechInput()
 
 function initSpeech() {
-  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SpeechRecognition) {
-    document.getElementById('speech-unsupported').style.display = 'block';
-    document.getElementById('mic-btn').style.display = 'none';
-    return;
-  }
-  speechRecognition = new SpeechRecognition();
-  speechRecognition.lang = 'de-DE';
-  speechRecognition.continuous = false;
-  speechRecognition.interimResults = true;
-  speechRecognition.maxAlternatives = 1;
-
-  speechRecognition.onstart = () => {
-    const dot = document.getElementById('speech-dot');
-    if (dot) { dot.classList.remove('idle'); }
-    document.getElementById('speech-transcript').textContent = 'Höre zu…';
-    resetSpeechSession();
-  };
-
-  speechRecognition.onresult = (e) => {
-    let interim = '';
-    let final = '';
-    for (let i = e.resultIndex; i < e.results.length; i++) {
-      const t = e.results[i][0].transcript;
-      if (e.results[i].isFinal) final += t;
-      else interim += t;
-    }
-    const text = (final || interim).trim();
-    document.getElementById('speech-transcript').textContent = text;
-    if (final) {
-      cancelPauseTimer();
-      speechProcess(final.trim().toLowerCase(), processSpeechInput);
-    } else if (interim) {
-      scheduleFromInterim(interim.trim().toLowerCase(), processSpeechInput);
-    }
-  };
-
-  speechRecognition.onerror = (e) => {
-    if (e.error === 'no-speech' || e.error === 'aborted') {
-      if (micActive && !gameState.micMuted) restartSpeech();
-      return;
-    }
-    document.getElementById('speech-transcript').textContent = 'Fehler: ' + e.error;
-  };
-
-  speechRecognition.onend = () => {
-    if (micActive && !gameState.micMuted) {
-      setTimeout(() => restartSpeech(), 150);
-    } else {
-      const dot = document.getElementById('speech-dot');
-      if (dot) dot.classList.add('idle');
-    }
-  };
-}
-
-function restartSpeech() {
-  try { speechRecognition.start(); } catch(e) {}
+  if (_x01Speech) return;
+  _x01Speech = createSpeechInput({
+    transcriptId:  'speech-transcript',
+    dotId:         'speech-dot',
+    statusId:      'speech-status',
+    micBtnId:      'mic-btn',
+    unsupportedId: 'speech-unsupported',
+    onResult:      processSpeechInput,
+  });
 }
 
 function toggleMic() {
-  if (!speechRecognition) { initSpeech(); }
-  if (!speechRecognition) return;
-  micActive = !micActive;
-  gameState.micMuted = !micActive;
-  const btn = document.getElementById('mic-btn');
-  const status = document.getElementById('speech-status');
-  if (micActive) {
-    btn.classList.remove('muted');
-    btn.classList.add('listening');
-    status.classList.add('active');
-    restartSpeech();
-  } else {
-    btn.classList.remove('listening');
-    btn.classList.add('muted');
-    status.classList.remove('active');
-    try { speechRecognition.abort(); } catch(e) {}
-    document.getElementById('speech-dot').classList.add('idle');
-  }
+  if (!_x01Speech) initSpeech();
+  if (_x01Speech) _x01Speech.toggle();
 }
 
-// ── SPEECH PARSER ──
+function restartSpeech() {
+  // handled internally by createSpeechInput
+}
+
+
+
+
 function processSpeechInput(text) {
   // If confirmation modal is open, route there first
   const modal = document.getElementById('confirm-modal');

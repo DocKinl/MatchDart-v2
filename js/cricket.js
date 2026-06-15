@@ -34,8 +34,7 @@ let cktState = {
   pendingMod:  'single',
 };
 
-let cktRecognition = null;
-let cktMicActive   = false;
+
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 function cktSelectOpt(group, val, btn) {
@@ -167,10 +166,7 @@ function startCricket() {
   p2box.style.display = isMulti ? 'flex' : 'none';
 
   // Mic reset
-  if (cktMicActive) {
-    cktMicActive = false;
-    try { cktRecognition && cktRecognition.abort(); } catch(e) {}
-  }
+  if (_cktSpeech) _cktSpeech.destroy();
   document.getElementById('ckt-mic-btn').className = 'mic-btn muted';
   document.getElementById('ckt-speech-status').classList.remove('active');
   document.getElementById('ckt-result-overlay').classList.remove('show');
@@ -615,86 +611,24 @@ function cktSpeakTurn() {
 // ════════════════════════════════════════════
 //  CRICKET — SPEECH INPUT
 // ════════════════════════════════════════════
-function toggleCktMic() {
-  if (!cktRecognition) initCktSpeech();
-  if (!cktRecognition) return;
-  cktMicActive = !cktMicActive;
-  const btn    = document.getElementById('ckt-mic-btn');
-  const status = document.getElementById('ckt-speech-status');
-  if (cktMicActive) {
-    btn.classList.remove('muted'); btn.classList.add('listening');
-    status.classList.add('active');
-    try { cktRecognition.start(); } catch(e) {}
-  } else {
-    btn.classList.remove('listening'); btn.classList.add('muted');
-    status.classList.remove('active');
-    try { cktRecognition.abort(); } catch(e) {}
-    cancelPauseTimer();
-  }
-}
+
+
+let _cktSpeech = null;
 
 function initCktSpeech() {
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SR) return;
-  cktRecognition = new SR();
-  cktRecognition.lang = 'de-DE';
-  cktRecognition.continuous = false;
-  cktRecognition.interimResults = true;
-  cktRecognition.maxAlternatives = 1;
-
-  cktRecognition.onstart = () => {
-    resetSpeechSession();
-    document.getElementById('ckt-speech-dot').classList.remove('idle');
-  };
-  cktRecognition.onresult = (e) => {
-    let interim = '', final = '';
-    for (let i = e.resultIndex; i < e.results.length; i++) {
-      if (e.results[i].isFinal) final += e.results[i][0].transcript;
-      else interim += e.results[i][0].transcript;
-    }
-    const text = (final || interim).trim().toLowerCase();
-    document.getElementById('ckt-speech-transcript').textContent = text;
-    if (final) {
-      speechProcess(final.trim().toLowerCase(), parseCktSpeech);
-    } else if (interim) {
-      scheduleFromInterim(interim.trim().toLowerCase(), parseCktSpeech);
-    }
-  };
-  cktRecognition.onerror = (e) => {
-    if (cktMicActive) setTimeout(() => { try { cktRecognition.start(); } catch(e){} }, 150);
-  };
-  cktRecognition.onend = () => {
-    document.getElementById('ckt-speech-dot').classList.add('idle');
-    if (cktMicActive) setTimeout(() => { try { cktRecognition.start(); } catch(e){} }, 100);
-  };
+  if (_cktSpeech) return;
+  _cktSpeech = createSpeechInput({
+    transcriptId: 'ckt-speech-transcript',
+    dotId:        'ckt-speech-dot',
+    statusId:     'ckt-speech-status',
+    micBtnId:     'ckt-mic-btn',
+    onResult:     parseCktSpeech,
+  });
 }
 
-function parseCktSpeech(text) {
-  // Miss
-  if (/^(miss|daneben|vorbei)$/.test(text)) { cktFieldPress(0); return; }
-  // Confirm round
-  if (/^(ja|bestätigen|fertig|weiter|nächste)/.test(text)) { cktConfirmRound(); return; }
-  // Undo
-  if (/^(zurück|rückgängig)/.test(text)) { cktUndo(); return; }
-
-  // Parse modifier
-  let mod = 'single';
-  if (/triple|tripel|dreifach|3x/.test(text)) mod = 'triple';
-  else if (/double|doppel|2x/.test(text))     mod = 'double';
-
-  // Parse field number
-  const numMatch = text.match(/\b(25|bull|20|19|18|17|16|15|\d{1,2})\b/i);
-  if (!numMatch) {
-    document.getElementById('ckt-speech-transcript').textContent = '❓ ' + text;
-    return;
-  }
-  let field = numMatch[1].toLowerCase() === 'bull' ? 25 : parseInt(numMatch[1]);
-  if (![15,16,17,18,19,20,25].includes(field)) {
-    document.getElementById('ckt-speech-transcript').textContent = '❓ Feld ' + field + ' ungültig';
-    return;
-  }
-  cktSetMod(mod);
-  cktFieldPress(field);
+function toggleCktMic() {
+  if (!_cktSpeech) initCktSpeech();
+  if (_cktSpeech) _cktSpeech.toggle();
 }
 
 // ════════════════════════════════════════════
@@ -733,10 +667,7 @@ function cktShowResult(humanWon, winner) {
 
 function cktResultClose() {
   document.getElementById('ckt-result-overlay').classList.remove('show');
-  if (cktMicActive) {
-    cktMicActive = false;
-    try { cktRecognition && cktRecognition.abort(); } catch(e) {}
-  }
+  if (_cktSpeech) _cktSpeech.destroy();
   showPage('start');
 }
 

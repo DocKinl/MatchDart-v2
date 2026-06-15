@@ -16,13 +16,11 @@ let bobsState = {
   totalDarts: 0,
   totalHits: 0,
   bestRound: 0,
-  bobsMicActive: false,
   bobsMicMuted: false,
   inputMode: 'simple',
 };
 
-let bobsRecognition = null;
-let bobsMicActive = false;
+
 
 // Full sequence: D1–D20 then Bull
 function buildSequence(order, includeBull) {
@@ -73,10 +71,7 @@ function startBobs27() {
   setTimeout(() => bobsSpeakRound(), 400);
 
   // Reset mic
-  if (bobsMicActive) {
-    bobsMicActive = false;
-    try { bobsRecognition && bobsRecognition.abort(); } catch(e) {}
-  }
+  if (_bobsSpeech) _bobsSpeech.destroy();
   document.getElementById('bobs-mic-btn').className = 'mic-btn muted';
   document.getElementById('bobs-speech-status').classList.remove('active');
 
@@ -351,10 +346,7 @@ function bobsShowResult(won) {
 
 function bobsResultClose() {
   document.getElementById('bobs-result-overlay').classList.remove('show');
-  if (bobsMicActive) {
-    bobsMicActive = false;
-    try { bobsRecognition && bobsRecognition.abort(); } catch(e) {}
-  }
+  if (_bobsSpeech) _bobsSpeech.destroy();
   showPage('start');
 }
 
@@ -367,85 +359,24 @@ function confirmBobsQuit() {
 // ════════════════════════════════════════════
 //  BOB'S 27 — SPEECH INPUT
 // ════════════════════════════════════════════
-function toggleBobsMic() {
-  if (!bobsRecognition) initBobsSpeech();
-  if (!bobsRecognition) return;
-  bobsMicActive = !bobsMicActive;
-  const btn    = document.getElementById('bobs-mic-btn');
-  const status = document.getElementById('bobs-speech-status');
-  if (bobsMicActive) {
-    btn.classList.remove('muted'); btn.classList.add('listening');
-    status.classList.add('active');
-    try { bobsRecognition.start(); } catch(e) {}
-  } else {
-    btn.classList.remove('listening'); btn.classList.add('muted');
-    status.classList.remove('active');
-    try { bobsRecognition.abort(); } catch(e) {}
-  }
-}
+
+
+let _bobsSpeech = null;
 
 function initBobsSpeech() {
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SR) return;
-  bobsRecognition = new SR();
-  bobsRecognition.lang = 'de-DE';
-  bobsRecognition.continuous = false;
-  bobsRecognition.interimResults = true;
-  bobsRecognition.maxAlternatives = 1;
-
-  bobsRecognition.onresult = (e) => {
-    let interim = '', final = '';
-    for (let i = e.resultIndex; i < e.results.length; i++) {
-      if (e.results[i].isFinal) final += e.results[i][0].transcript;
-      else interim += e.results[i][0].transcript;
-    }
-    const text = (final || interim).trim().toLowerCase();
-    document.getElementById('bobs-speech-transcript').textContent = text;
-    if (final) {
-      cancelPauseTimer();
-      speechProcess(final.trim().toLowerCase(), parseBobsSpeech);
-    } else if (interim) {
-      scheduleFromInterim(interim.trim().toLowerCase(), parseBobsSpeech);
-    }
-  };
-  bobsRecognition.onerror = (e) => {
-    if (e.error !== 'no-speech' && e.error !== 'aborted')
-      document.getElementById('bobs-speech-transcript').textContent = 'Fehler: ' + e.error;
-    if (bobsMicActive) setTimeout(() => { try { bobsRecognition.start(); } catch(e){} }, 150);
-  };
-  bobsRecognition.onend = () => {
-    if (bobsMicActive) setTimeout(() => { try { bobsRecognition.start(); } catch(e){} }, 100);
-    else {
-      document.getElementById('bobs-speech-dot').classList.add('idle');
-    }
-  };
-  bobsRecognition.onstart = () => {
-    document.getElementById('bobs-speech-dot').classList.remove('idle');
-    resetSpeechSession();
-  };
+  if (_bobsSpeech) return;
+  _bobsSpeech = createSpeechInput({
+    transcriptId: 'bobs-speech-transcript',
+    dotId:        'bobs-speech-dot',
+    statusId:     'bobs-speech-status',
+    micBtnId:     'bobs-mic-btn',
+    onResult:     parseBobsSpeech,
+  });
 }
 
-function parseBobsSpeech(text) {
-  const s = bobsState;
-  // Simple mode commands: "null","eine","zwei","drei","0","1","2","3"
-  // or "miss","daneben" → 0
-  // or "treffer" → 1
-  if (s.inputMode === 'simple') {
-    const map = {
-      'null':0,'daneben':0,'miss':0,'keine':0,'kein':0,
-      'eins':1,'ein':1,'einen':1,'einen treffer':1,'treffer':1,'1':1,'one':1,
-      'zwei':2,'zwei treffer':2,'2':2,'two':2,
-      'drei':3,'drei treffer':3,'alle drei':3,'alle':3,'3':3,'three':3,
-    };
-    for (const [key, val] of Object.entries(map)) {
-      if (text.includes(key)) { bobsSimpleInput(val); return; }
-    }
-  } else {
-    // Detail mode: "treffer","ja","hit","getroffen" → hit; "daneben","nein","miss","vorbei" → miss
-    if (/treffer|ja|hit|getroffen|rein|drin/.test(text)) { bobsDetailInput(true); return; }
-    if (/daneben|nein|miss|vorbei|verfehlt/.test(text))  { bobsDetailInput(false); return; }
-  }
-  document.getElementById('bobs-speech-transcript').textContent = '❓ ' + text;
+function toggleBobsMic() {
+  if (!_bobsSpeech) initBobsSpeech();
+  if (_bobsSpeech) _bobsSpeech.toggle();
 }
 
 

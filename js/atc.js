@@ -30,8 +30,7 @@ let atcState = {
   opponentDone: false,
 };
 
-let atcRecognition = null;
-let atcMicActive = false;
+
 
 function buildAtcSequence() {
   const seq = [];
@@ -122,12 +121,7 @@ function startAtc() {
   atcSetInputMode(atcConfig.input);
 
   // Mic reset
-  if (atcMicActive) {
-    atcMicActive = false;
-    try { atcRecognition && atcRecognition.abort(); } catch(e) {}
-  }
-  document.getElementById('atc-mic-btn').className = 'mic-btn muted';
-  document.getElementById('atc-speech-status').classList.remove('active');
+  if (_atcSpeech) _atcSpeech.destroy();
   document.getElementById('atc-result-overlay').classList.remove('show');
 
   atcBuildProgress();
@@ -581,10 +575,7 @@ function atcShowResult(humanWon, winner) {
 
 function atcResultClose() {
   document.getElementById('atc-result-overlay').classList.remove('show');
-  if (atcMicActive) {
-    atcMicActive = false;
-    try { atcRecognition && atcRecognition.abort(); } catch(e) {}
-  }
+  if (_atcSpeech) _atcSpeech.destroy();
   showPage('start');
 }
 
@@ -607,86 +598,24 @@ function atcSpeakRound() {
 // ════════════════════════════════════════════
 //  ATC — SPEECH INPUT
 // ════════════════════════════════════════════
-function toggleAtcMic() {
-  if (!atcRecognition) initAtcSpeech();
-  if (!atcRecognition) return;
-  atcMicActive = !atcMicActive;
-  const btn    = document.getElementById('atc-mic-btn');
-  const status = document.getElementById('atc-speech-status');
-  if (atcMicActive) {
-    btn.classList.remove('muted'); btn.classList.add('listening');
-    status.classList.add('active');
-    try { atcRecognition.start(); } catch(e) {}
-  } else {
-    btn.classList.remove('listening'); btn.classList.add('muted');
-    status.classList.remove('active');
-    try { atcRecognition.abort(); } catch(e) {}
-  }
-}
+
+
+let _atcSpeech = null;
 
 function initAtcSpeech() {
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SR) return;
-  atcRecognition = new SR();
-  atcRecognition.lang = 'de-DE';
-  atcRecognition.continuous = false;
-  atcRecognition.interimResults = true;
-  atcRecognition.maxAlternatives = 1;
-
-  atcRecognition.onresult = (e) => {
-    let interim = '', final = '';
-    for (let i = e.resultIndex; i < e.results.length; i++) {
-      if (e.results[i].isFinal) final += e.results[i][0].transcript;
-      else interim += e.results[i][0].transcript;
-    }
-    const text = (final || interim).trim().toLowerCase();
-    document.getElementById('atc-speech-transcript').textContent = text;
-    if (final) {
-      cancelPauseTimer();
-      speechProcess(final.trim().toLowerCase(), parseAtcSpeech);
-    } else if (interim) {
-      scheduleFromInterim(interim.trim().toLowerCase(), parseAtcSpeech);
-    }
-  };
-  atcRecognition.onstart = () => {
-    resetSpeechSession();
-  };
-  atcRecognition.onerror = (e) => {
-    if (atcMicActive) setTimeout(() => { try { atcRecognition.start(); } catch(e){} }, 150);
-  };
-  atcRecognition.onend = () => {
-    if (atcMicActive) setTimeout(() => { try { atcRecognition.start(); } catch(e){} }, 100);
-  };
+  if (_atcSpeech) return;
+  _atcSpeech = createSpeechInput({
+    transcriptId: 'atc-speech-transcript',
+    dotId:        'atc-speech-dot',
+    statusId:     'atc-speech-status',
+    micBtnId:     'atc-mic-btn',
+    onResult:     parseAtcSpeech,
+  });
 }
 
-function parseAtcSpeech(text) {
-  const s = atcState;
-  if (atcConfig.input === 'simple') {
-    if (/treffer|ja|hit|getroffen|rein|drin|ja/.test(text)) { atcSimpleInput(true); return; }
-    if (/daneben|nein|miss|vorbei|verfehlt/.test(text))     { atcSimpleInput(false); return; }
-  } else {
-    // Complex mode: reuse X01-style parsing
-    // Check for "Miss" / "Daneben"
-    if (/^(miss|daneben|vorbei)$/.test(text)) { atcThrowMiss(); return; }
-    if (/^(bull|bullseye)/.test(text))         { atcThrowBull(); return; }
-
-    // Parse modifier + field: "triple 20", "dreifach zwanzig", "doppel 5", "7"
-    const darts = parseMultiWordDarts(text);
-    if (darts.length > 0) {
-      const d = darts[0];
-      atcSetModifier(d.mod === 'miss' ? 'single' : d.mod);
-      if (d.field === 'Bull') { atcThrowBull(); return; }
-      if (d.scored === 0)     { atcThrowMiss(); return; }
-      atcNumPress(d.field);
-      return;
-    }
-    // Bare number: "sieben" / "7 getroffen" / "7"
-    const numMatch = text.match(/(\d{1,2})/);
-    if (numMatch) { atcNumPress(parseInt(numMatch[1])); return; }
-    const spoken = parseSpokenNumber(text.replace(/getroffen|treffer/g,'').trim());
-    if (spoken !== null && spoken >= 1 && spoken <= 20) { atcNumPress(spoken); return; }
-  }
-  document.getElementById('atc-speech-transcript').textContent = '❓ ' + text;
+function toggleAtcMic() {
+  if (!_atcSpeech) initAtcSpeech();
+  if (_atcSpeech) _atcSpeech.toggle();
 }
 
 
